@@ -1,11 +1,11 @@
 package org.carzuiliam.fastlic.builder;
 
 import org.carzuiliam.fastlic.utils.FlowField;
+import org.carzuiliam.fastlic.utils.ImageUtils;
 import org.carzuiliam.fastlic.utils.Vector2D;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,6 +64,11 @@ public class LICBuilder {
     }
 
     public LICBuilder setInputImage(String _resourceName) throws IOException {
+        if (_resourceName == null) {
+            this.inputImage = null;
+            return this;
+        }
+
         InputStream input = getClass().getClassLoader().getResourceAsStream(_resourceName);
 
         if (input == null) {
@@ -82,45 +87,28 @@ public class LICBuilder {
         if (this.inputImage != null) {
             width = this.inputImage.getWidth();
             height = this.inputImage.getHeight();
-            inputTexture = readImageToByteArray(this.inputImage);
+            inputTexture = ImageUtils.readImageToByteArray(this.inputImage);
         } else {
             width = this.squareFlowFieldSize;
             height = this.squareFlowFieldSize;
-            inputTexture = new byte[width * height];
-            this.makeWhiteNoise(width, height, inputTexture);
-            this.writeByteArrayToJPG(width, height, inputTexture, "noise.jpg");
+            inputTexture = this.makeWhiteNoise(width, height);
+
+            ImageUtils.writeByteArrayToJPG(width, height, inputTexture, "noise.jpg");
         }
 
-        float[] lut0 = new float[this.discreteFilterSize];
-        float[] lut1 = new float[this.discreteFilterSize];
         byte[] outputImage = new byte[width * height];
-
+        float[] lut0 = this.generateBoxFilterLUT();
+        float[] lut1 = this.generateBoxFilterLUT();
         Vector2D[] vectors = FlowField.generateFlowField(width, height, this.flowFieldType);
 
         this.normalizeVectors(vectors);
-        this.generateBoxFilterLUT(this.discreteFilterSize, lut0, lut1);
-        this.flowImagingLIC(width, height, vectors, inputTexture, outputImage, lut0, lut1, this.lowPassFilterLength);
-        this.writeByteArrayToJPG(width, height, outputImage, _filename);
+        this.flowImagingLIC(width, height, vectors, inputTexture, outputImage, lut0, lut1);
+
+        ImageUtils.writeByteArrayToJPG(width, height, outputImage, _filename);
     }
 
-    private byte[] readImageToByteArray(BufferedImage _image) {
-        int width = _image.getWidth();
-        int height = _image.getHeight();
-        byte[] data = new byte[width * height];
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int rgb = _image.getRGB(x, y);
-                int gray = (rgb >> 16) & 0xff;
-
-                data[y * width + x] = (byte) gray;
-            }
-        }
-
-        return data;
-    }
-
-    private void makeWhiteNoise(int _width, int _height, byte[] _noise) {
+    private byte[] makeWhiteNoise(int _width, int _height) {
+        byte[] whiteNoise = new byte[_width * _height];
         Random rand = new Random();
 
         for (int j = 0; j < _height; j++) {
@@ -128,9 +116,11 @@ public class LICBuilder {
                 int randomValue = rand.nextInt();
 
                 randomValue = ((randomValue & 0xff) + ((randomValue & 0xff00) >> 8)) & 0xff;
-                _noise[j * _width + i] = (byte) randomValue;
+                whiteNoise[j * _width + i] = (byte) randomValue;
             }
         }
+
+        return whiteNoise;
     }
 
     private void normalizeVectors(Vector2D[] _vectors) {
@@ -139,21 +129,24 @@ public class LICBuilder {
         }
     }
 
-    private void generateBoxFilterLUT(int _size, float[] _lut0, float[] _lut1) {
-        for (int i = 0; i < _size; i++) {
-            _lut0[i] = i;
-            _lut1[i] = i;
+    private float[] generateBoxFilterLUT() {
+        float[] lut = new float[this.discreteFilterSize];
+
+        for (int i = 0; i < this.discreteFilterSize; i++) {
+            lut[i] = i;
         }
+
+        return lut;
     }
 
     private void flowImagingLIC(
             int _width, int _height,
             Vector2D[] _vectors,
             byte[] _noise, byte[] _image,
-            float[] _lut0, float[] _lut1, float _kernelLength
+            float[] _lut0, float[] _lut1
     ) {
-        int advectsMax = (int) (_kernelLength * 3);
-        float len2ID = (this.discreteFilterSize - 1) / _kernelLength;
+        int advectsMax = (int) (this.lowPassFilterLength * 3);
+        float len2ID = (this.discreteFilterSize - 1) / this.lowPassFilterLength;
 
         for (int j = 0; j < _height; j++) {
             for (int i = 0; i < _width; i++) {
@@ -169,7 +162,7 @@ public class LICBuilder {
                     float y = j + 0.5f;
                     float[] weightLUT = (dir == 0) ? _lut0 : _lut1;
 
-                    while (currentLength < _kernelLength && advects < advectsMax) {
+                    while (currentLength < this.lowPassFilterLength && advects < advectsMax) {
                         int vecIdx = ((int) y * _width + (int) x);
                         Vector2D vec = _vectors[vecIdx];
 
@@ -209,9 +202,9 @@ public class LICBuilder {
                         currentLength += segmentLength;
                         segmentLength += 0.0004f;
 
-                        if (currentLength > _kernelLength) {
-                            segmentLength = _kernelLength - previousLength;
-                            currentLength = _kernelLength;
+                        if (currentLength > this.lowPassFilterLength) {
+                            segmentLength = this.lowPassFilterLength - previousLength;
+                            currentLength = this.lowPassFilterLength;
                         }
 
                         float x1 = x + vx * segmentLength;
@@ -244,23 +237,5 @@ public class LICBuilder {
                 _image[j * _width + i] = (byte) texVal;
             }
         }
-    }
-
-    private void writeByteArrayToJPG(int _width, int _height, byte[] _image, String _filename) throws IOException {
-        String outputDir = "target/output";
-        new File(outputDir).mkdirs();
-
-        File outputFile = new File(outputDir, _filename);
-        BufferedImage img = new BufferedImage(_width, _height, BufferedImage.TYPE_BYTE_GRAY);
-
-        for (int y = 0; y < _height; y++) {
-            for (int x = 0; x < _width; x++) {
-                int value = Byte.toUnsignedInt(_image[y * _width + x]);
-                int rgb = (value << 16) | (value << 8) | value;
-                img.setRGB(x, y, rgb);
-            }
-        }
-
-        ImageIO.write(img, "jpg", outputFile);
     }
 }

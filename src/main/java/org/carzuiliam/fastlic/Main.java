@@ -9,7 +9,7 @@ import java.io.IOException;
 public class Main {
     public static void main(String[] args) throws IOException {
         LICBuilder licBuilder = new LICBuilder()
-                //.setInputImage("lena.jpg")
+                .setInputImage("lena.jpg")
                 .setFlowFieldType(FlowField.Type.SADDLE)
                 .setSquareFlowFieldSize(400)
                 .setDiscreteFilterSize(2048)
@@ -20,7 +20,7 @@ public class Main {
         licBuilder.generate("lic.jpg");
 
         FastLICBuilder fastLICBuilder = new FastLICBuilder()
-                //.setInputImage("lena.jpg")
+                .setInputImage("lena.jpg")
                 .setFlowFieldType(FlowField.Type.SADDLE)
                 .setSquareFlowFieldSize(400)
                 .setDiscreteFilterSize(2048)
