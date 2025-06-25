@@ -1,7 +1,7 @@
 
 # Fast and Resolution Independent Line Integral Convolution (FastLIC) in Java
 
-This project is an implementation of the **Fast and Resolution Independent Line Integral Convolution (LIC)** algorithm for flow visualization, written entirely in Java. The LIC techniques are widely used for visualizing vector fields, generating high-quality textures that represent the flow direction in the field.
+This project is an implementation of the **Fast and Resolution Independent Line Integral Convolution (LIC)** algorithm for flow visualization, written entirely in Java. The LIC techniques are widely used for visualizing vector fields, generating high-quality textures that represent the flow direction in the field. This project also includes the original LIC implementation.
 
 ## Introduction
 
